@@ -5,13 +5,14 @@
 package com.st10470759.chatapp_part3;
 
 import java.util.Scanner;
+
 /**
  *
  * @author rnndo
  */
 public class Registration {
 
- public static void main(String[] args) {
+    public static void main(String[] args) {
 
         Scanner scan = new Scanner(System.in);
         Login login = new Login();
@@ -57,25 +58,31 @@ public class Registration {
 
                 System.out.println("\nWelcome to QuickChat.");
 
-                System.out.print("How many messages do you want to enter? ");
-                int numberOfMessages = scan.nextInt();
-                scan.nextLine();
-                msg.setMessagesAllowed(numberOfMessages);
+                // Tell the Message object who is logged in and load any messages stored earlier
+                msg.setSender(loginUsername);
+                msg.readStoredMessagesFromFile();
 
                 // The menu keeps showing until the user chooses 3 (Quit)
                 int option;
                 do {
                     System.out.println("\n===== Menu =====");
                     System.out.println("1) Send Messages");
-                    System.out.println("2) Show recently sent messages");
+                    System.out.println("2) Stored Messages");
                     System.out.println("3) Quit");
                     System.out.print("Enter your choice: ");
                     option = scan.nextInt();
                     scan.nextLine();
 
                     switch (option) {
-                        case 1 -> msg.sendingMessages(scan);
-                        case 2 -> System.out.println("Coming Soon.");
+                        case 1 -> {
+                            System.out.print("How many messages do you want to enter? ");
+                            int number = scan.nextInt();
+                            scan.nextLine();
+                            // add to the number already entered, so choosing option 1 again still works
+                            msg.setMessagesAllowed(msg.messagesEntered + number);
+                            msg.sendingMessages(scan);
+                        }
+                        case 2 -> msg.storedMessagesMenu(scan);
                         case 3 -> System.out.println("Goodbye.");
                         default -> System.out.println("Invalid option, please try again.");
                     }
