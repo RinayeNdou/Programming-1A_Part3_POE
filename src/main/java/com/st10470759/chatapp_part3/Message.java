@@ -8,42 +8,63 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import java.io.File;
+import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.Random;
 import java.util.Scanner;
+
 /**
+ * Message class for QuickChat (Part 3).
+ * The structure (the message loop, generateMessageID, createMessageHash and the report
+ * methods) is based on the Message class example shared by the lecturer in class,
+ * changed to match the Part 2 and Part 3 briefs.
  *
  * @author rnndo
  */
 public class Message {
 
-    // Lists that hold the details of every message that was SENT
+    // The arrays asked for in the brief
     ArrayList<String> sentMessages = new ArrayList<>();
-    ArrayList<String> messageIdsList = new ArrayList<>();
-    ArrayList<String> msgHash = new ArrayList<>();
-    ArrayList<String> recipientNumber = new ArrayList<>();
+    ArrayList<String> disregardedMessages = new ArrayList<>();
+    ArrayList<String> storedMessages = new ArrayList<>();
+    ArrayList<String> messageHashes = new ArrayList<>();
+    ArrayList<String> messageIDs = new ArrayList<>();
 
-    // Remembers every ID we have made so no two messages get the same ID
-    HashSet<String> messageIds = new HashSet<>();
-
-    // Holds the messages the user chose to STORE (these are written to a JSON file)
-    JsonArray storedMessages = new JsonArray();
+    // These arrays hold the other details of every message.
+    // The same position in all of the "every message" arrays belongs to the same message.
+    ArrayList<String> messageRecipients = new ArrayList<>();
+    ArrayList<String> messageSenders = new ArrayList<>();
+    ArrayList<String> messageTexts = new ArrayList<>();
+    ArrayList<String> messageFlags = new ArrayList<>();   // "Sent", "Stored" or "Disregarded"
 
     Random random = new Random();
 
-    // We reuse the Login class from Part 1 to check the recipient number
+    // We reuse the Login class to check the recipient number
     Login login = new Login();
 
-    int numMessageSent = 0;    // how many messages have been sent so far
+    String sender = "Unknown";                    // the name of the logged-in user
+    String storageFile = "storedMessages.json";   // the file the stored messages are saved in
+
     int messagesAllowed = 0;   // how many messages the user said they want to enter
     int messagesEntered = 0;   // how many messages the user has dealt with so far
 
     // Saves how many messages the user wants to enter
     public void setMessagesAllowed(int number) {
         messagesAllowed = number;
+    }
+
+    // Saves the name of the user who is sending the messages
+    public void setSender(String senderName) {
+        sender = senderName;
+    }
+
+    // Lets us choose which file the stored messages are saved in (the tests use their own file)
+    public void setStorageFile(String fileName) {
+        storageFile = fileName;
     }
 
     // Asks the user for each message and lets them send, disregard or store it
@@ -85,10 +106,9 @@ public class Message {
             }
             System.out.println(checkMessageLength(messageText));
 
-            // ID and hash
+            // ID
             String messageID = generateMessageID();
             System.out.println(messageIDCreated(messageID));
-            String messageHash = createMessageHash(messageID, numMessageSent, messageText);
 
             // Ask what to do with the message (keeps asking until the choice is 1, 2 or 3)
             int choice = 0;
@@ -112,17 +132,12 @@ public class Message {
             }
 
             if (choice == 1) {
-                // Send: save the message in the lists
-                sentMessages.add(messageText);
-                messageIdsList.add(messageID);
-                msgHash.add(messageHash);
-                recipientNumber.add(recipient);
-                numMessageSent++;
-
-                System.out.println("\n" + messageDetails(sentMessages.size() - 1));
+                // Send
+                addMessage(messageID, recipient, messageText, "Sent");
+                System.out.println("\n" + messageDetails(messageIDs.size() - 1));
 
             } else if (choice == 2) {
-                // Disregard: the message is not saved anywhere
+                // Disregard: the message goes into the disregarded array
                 int deleteChoice = input.nextInt();
                 input.nextLine();
                 if (deleteChoice == 0) {
@@ -130,10 +145,11 @@ public class Message {
                 } else {
                     System.out.println("Message disregarded.");
                 }
+                addMessage(messageID, recipient, messageText, "Disregarded");
 
             } else {
-                // Store: write the message to the JSON file
-                boolean saved = storeMessage(messageID, messageHash, recipient, messageText);
+                // Store: the message is saved in the JSON file
+                boolean saved = addMessage(messageID, recipient, messageText, "Stored");
                 if (saved) {
                     System.out.println(SentMessage(choice));
                 } else {
@@ -149,15 +165,42 @@ public class Message {
         System.out.println("Total number of messages sent: " + returnTotalMessages());
     }
 
+    // Adds a message to the arrays. The flag is "Sent", "Stored" or "Disregarded".
+    // Returns false only if a stored message could not be saved to the file.
+    public boolean addMessage(String messageID, String recipient, String messageText, String flag) {
+
+        // The hash uses the position of the message (0 for the first message)
+        String messageHash = createMessageHash(messageID, messageIDs.size(), messageText);
+
+        // Every message goes into the "every message" arrays
+        messageIDs.add(messageID);
+        messageHashes.add(messageHash);
+        messageRecipients.add(recipient);
+        messageSenders.add(sender);
+        messageTexts.add(messageText);
+        messageFlags.add(flag);
+
+        // ... and into the array for its flag
+        boolean saved = true;
+        if (flag.equals("Sent")) {
+            sentMessages.add(messageText);
+        } else if (flag.equals("Disregarded")) {
+            disregardedMessages.add(messageText);
+        } else if (flag.equals("Stored")) {
+            storedMessages.add(messageText);
+            saved = storeMessage();
+        }
+        return saved;
+    }
+
     // Makes a random ten-digit ID that has not been used before
     public String generateMessageID() {
         String messageID;
         do {
             long number = 1000000000L + random.nextLong(9000000000L);
             messageID = String.valueOf(number);
-        } while (messageIds.contains(messageID) || !checkMessageID(messageID));
+        } while (messageIDs.contains(messageID) || !checkMessageID(messageID));
 
-        messageIds.add(messageID);
         return messageID;
     }
 
@@ -168,13 +211,14 @@ public class Message {
         }
         return messageID.length() <= 10;
     }
-        // Returns the message shown when a message ID has been made
+
+    // Returns the message shown when a message ID has been made
     public String messageIDCreated(String messageID) {
         return "Message ID generated: " + messageID;
     }
 
-    // Checks the recipient number by reusing checkCellPhoneNumber from Part 1
-    // (+27 followed by 9 or 10 digits), and returns the Part 2 messages
+    // Checks the recipient number by reusing checkCellPhoneNumber from Login
+    // (+27 followed by 9 or 10 digits), and returns the messages from the brief
     public String checkRecipientCell(String cellphone) {
         if (login.checkCellPhoneNumber(cellphone)) {
             return "Cell phone number successfully captured.";
@@ -222,26 +266,30 @@ public class Message {
         }
     }
 
-    // Stores a message in a JSON file (storedMessages.json) so it can be sent later
+    // Writes all the stored messages to the JSON file
     // Returns true if the file was saved and false if something went wrong
-    // Reference: Google (n.d.) Gson User Guide. Available at: https://google.github.io/gson/UserGuide.html (Accessed: 15 October 2026).
-    public boolean storeMessage(String messageID, String messageHash, String recipient, String messageText) {
+    // Reference: Google (n.d.) Gson User Guide. Available at: https://google.github.io/gson/UserGuide.html (Accessed: 18 November 2026).
+    public boolean storeMessage() {
 
-        // Put the details of this message into a JSON object
-        JsonObject messageObject = new JsonObject();
-        messageObject.addProperty("messageID", messageID);
-        messageObject.addProperty("messageHash", messageHash);
-        messageObject.addProperty("recipient", recipient);
-        messageObject.addProperty("message", messageText);
+        JsonArray array = new JsonArray();
 
-        // Add it to the list of stored messages
-        storedMessages.add(messageObject);
+        // Go through every message and add the stored ones to the JSON array
+        for (int i = 0; i < messageIDs.size(); i++) {
+            if (messageFlags.get(i).equals("Stored")) {
+                JsonObject messageObject = new JsonObject();
+                messageObject.addProperty("messageID", messageIDs.get(i));
+                messageObject.addProperty("messageHash", messageHashes.get(i));
+                messageObject.addProperty("sender", messageSenders.get(i));
+                messageObject.addProperty("recipient", messageRecipients.get(i));
+                messageObject.addProperty("message", messageTexts.get(i));
+                array.add(messageObject);
+            }
+        }
 
-        // Write the whole list of stored messages to the file
         Gson gson = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
         try {
-            FileWriter writer = new FileWriter("storedMessages.json");
-            gson.toJson(storedMessages, writer);
+            FileWriter writer = new FileWriter(storageFile);
+            gson.toJson(array, writer);
             writer.close();
             return true;
         } catch (IOException e) {
@@ -249,27 +297,247 @@ public class Message {
         }
     }
 
-    // Returns the details of one sent message: ID, hash, recipient, message
-    private String messageDetails(int index) {
-        return "Message ID: " + messageIdsList.get(index)
-                + "\nMessage Hash: " + msgHash.get(index)
-                + "\nRecipient: " + recipientNumber.get(index)
-                + "\nMessage: " + sentMessages.get(index) + "\n";
+    // Reads the stored messages from the JSON file into the arrays
+    // Reference: Google (n.d.) Gson User Guide. Available at: https://google.github.io/gson/UserGuide.html (Accessed: 18 November 2026).
+    public void readStoredMessagesFromFile() {
+
+        File file = new File(storageFile);
+        if (!file.exists()) {
+            return;   // nothing has been stored yet
+        }
+
+        try {
+            FileReader reader = new FileReader(file);
+            JsonArray array = JsonParser.parseReader(reader).getAsJsonArray();
+            reader.close();
+
+            for (int i = 0; i < array.size(); i++) {
+                JsonObject messageObject = array.get(i).getAsJsonObject();
+                String id = messageObject.get("messageID").getAsString();
+
+                // Skip messages that are already in the arrays
+                if (messageIDs.contains(id)) {
+                    continue;
+                }
+
+                String text = messageObject.get("message").getAsString();
+
+                String savedSender = "Unknown";
+                if (messageObject.has("sender")) {
+                    savedSender = messageObject.get("sender").getAsString();
+                }
+
+                messageIDs.add(id);
+                messageHashes.add(messageObject.get("messageHash").getAsString());
+                messageSenders.add(savedSender);
+                messageRecipients.add(messageObject.get("recipient").getAsString());
+                messageTexts.add(text);
+                messageFlags.add("Stored");
+                storedMessages.add(text);
+            }
+        } catch (Exception e) {
+            System.out.println("The stored messages file could not be read.");
+        }
     }
 
-    // Returns the details of all the messages that were sent
+    // Returns the details of one message: ID, hash, recipient, message
+    private String messageDetails(int index) {
+        return "Message ID: " + messageIDs.get(index)
+                + "\nMessage Hash: " + messageHashes.get(index)
+                + "\nRecipient: " + messageRecipients.get(index)
+                + "\nMessage: " + messageTexts.get(index) + "\n";
+    }
+
+    // Returns a report of all the messages that were sent (hash, recipient and message)
     public String printMessages() {
-        StringBuilder allMessages = new StringBuilder();
-        for (int i = 0; i < sentMessages.size(); i++) {
-            allMessages.append(messageDetails(i)).append("\n");
+        StringBuilder report = new StringBuilder();
+        for (int i = 0; i < messageIDs.size(); i++) {
+            if (messageFlags.get(i).equals("Sent")) {
+                report.append(messageDetails(i)).append("\n");
+            }
         }
-        return allMessages.toString();
+        if (report.length() == 0) {
+            return "No messages have been sent yet.";
+        }
+        return report.toString();
     }
 
     // Returns how many messages have been sent
     public int returnTotalMessages() {
-        return numMessageSent;
+        return sentMessages.size();
+    }
+
+    // ----- Stored Messages menu -----
+
+    // a. Shows the sender and recipient of every stored message
+    public String displaySendersAndRecipients() {
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < messageIDs.size(); i++) {
+            if (messageFlags.get(i).equals("Stored")) {
+                result.append("Sender: ").append(messageSenders.get(i));
+                result.append(" | Recipient: ").append(messageRecipients.get(i)).append("\n");
+            }
+        }
+        if (result.length() == 0) {
+            return "There are no stored messages.";
+        }
+        return result.toString();
+    }
+
+    // b. Finds the longest stored message
+    public String longestStoredMessage() {
+        if (storedMessages.isEmpty()) {
+            return "There are no stored messages.";
+        }
+        String longest = storedMessages.get(0);
+        for (int i = 1; i < storedMessages.size(); i++) {
+            if (storedMessages.get(i).length() > longest.length()) {
+                longest = storedMessages.get(i);
+            }
+        }
+        return longest;
+    }
+
+    // c. Searches for a message ID and returns its message
+    public String searchByMessageID(String messageID) {
+        int index = messageIDs.indexOf(messageID);
+        if (index == -1) {
+            return "Message ID not found.";
+        }
+        return messageTexts.get(index);
+    }
+
+    // c. Returns the recipient of the message with this ID
+    public String getRecipientByMessageID(String messageID) {
+        int index = messageIDs.indexOf(messageID);
+        if (index == -1) {
+            return "Message ID not found.";
+        }
+        return messageRecipients.get(index);
+    }
+
+    // d. Finds all the sent or stored messages for one recipient
+    public ArrayList<String> searchByRecipient(String recipient) {
+        ArrayList<String> found = new ArrayList<>();
+        for (int i = 0; i < messageIDs.size(); i++) {
+            boolean sentOrStored = messageFlags.get(i).equals("Sent") || messageFlags.get(i).equals("Stored");
+            if (messageRecipients.get(i).equals(recipient) && sentOrStored) {
+                found.add(messageTexts.get(i));
+            }
+        }
+        return found;
+    }
+
+    // e. Deletes a message using its message hash
+    public String deleteMessageByHash(String hash) {
+        int index = messageHashes.indexOf(hash);
+        if (index == -1) {
+            return "Message hash not found.";
+        }
+
+        String text = messageTexts.get(index);
+        String flag = messageFlags.get(index);
+
+        // Take the message out of the array for its flag
+        if (flag.equals("Sent")) {
+            sentMessages.remove(text);
+        } else if (flag.equals("Disregarded")) {
+            disregardedMessages.remove(text);
+        } else if (flag.equals("Stored")) {
+            storedMessages.remove(text);
+        }
+
+        // Take it out of the "every message" arrays
+        messageIDs.remove(index);
+        messageHashes.remove(index);
+        messageRecipients.remove(index);
+        messageSenders.remove(index);
+        messageTexts.remove(index);
+        messageFlags.remove(index);
+
+        // If it was a stored message, update the JSON file
+        if (flag.equals("Stored")) {
+            storeMessage();
+        }
+
+        return "Message: \"" + text + "\" successfully deleted.";
+    }
+
+    // f. Returns a report with the full details of all the stored messages
+    public String storedMessagesReport() {
+        StringBuilder report = new StringBuilder();
+        for (int i = 0; i < messageIDs.size(); i++) {
+            if (messageFlags.get(i).equals("Stored")) {
+                report.append("Message ID: ").append(messageIDs.get(i)).append("\n");
+                report.append("Message Hash: ").append(messageHashes.get(i)).append("\n");
+                report.append("Sender: ").append(messageSenders.get(i)).append("\n");
+                report.append("Recipient: ").append(messageRecipients.get(i)).append("\n");
+                report.append("Message: ").append(messageTexts.get(i)).append("\n\n");
+            }
+        }
+        if (report.length() == 0) {
+            return "There are no stored messages.";
+        }
+        return report.toString();
+    }
+
+    // The menu for the Stored Messages option
+    public void storedMessagesMenu(Scanner input) {
+        int option;
+        do {
+            System.out.println("\n===== Stored Messages =====");
+            System.out.println("1) Display the sender and recipient of all stored messages");
+            System.out.println("2) Display the longest stored message");
+            System.out.println("3) Search for a message ID");
+            System.out.println("4) Search for all messages for a recipient");
+            System.out.println("5) Delete a message using its message hash");
+            System.out.println("6) Display a report of all stored messages");
+            System.out.println("7) Back to the main menu");
+            System.out.print("Enter your choice: ");
+            option = input.nextInt();
+            input.nextLine();
+
+            if (option == 1) {
+                System.out.println(displaySendersAndRecipients());
+
+            } else if (option == 2) {
+                System.out.println(longestStoredMessage());
+
+            } else if (option == 3) {
+                System.out.print("Enter the message ID: ");
+                String id = input.nextLine();
+                String found = searchByMessageID(id);
+                if (found.equals("Message ID not found.")) {
+                    System.out.println(found);
+                } else {
+                    System.out.println("Recipient: " + getRecipientByMessageID(id));
+                    System.out.println("Message: " + found);
+                }
+
+            } else if (option == 4) {
+                System.out.print("Enter the recipient's cell number: ");
+                String recipient = input.nextLine();
+                ArrayList<String> found = searchByRecipient(recipient);
+                if (found.isEmpty()) {
+                    System.out.println("No messages found for that recipient.");
+                } else {
+                    for (int i = 0; i < found.size(); i++) {
+                        System.out.println(found.get(i));
+                    }
+                }
+
+            } else if (option == 5) {
+                System.out.print("Enter the message hash: ");
+                String hash = input.nextLine();
+                System.out.println(deleteMessageByHash(hash));
+
+            } else if (option == 6) {
+                System.out.println(storedMessagesReport());
+
+            } else if (option != 7) {
+                System.out.println("Invalid option, please try again.");
+            }
+        } while (option != 7);
     }
 
 }
-
