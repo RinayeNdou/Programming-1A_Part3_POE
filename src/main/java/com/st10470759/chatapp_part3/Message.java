@@ -19,9 +19,11 @@ import java.util.Scanner;
 
 /**
  * Message class for QuickChat (Part 3).
- * The structure (the message loop, generateMessageID, createMessageHash and the report
- * methods) is based on the Message class example shared by the lecturer in class,
- * changed to match the Part 2 and Part 3 briefs.
+ * Handles creating, sending, storing, searching and deleting messages.
+ * Stored messages are saved to a JSON file so they survive between runs.
+ * The structure of this class (the message loop, generateMessageID, createMessageHash
+ * and the report methods) is based on the Message class example shared by the lecturer
+ * in class, changed to match the Part 2 and Part 3 briefs.
  *
  * @author rnndo
  */
@@ -65,6 +67,19 @@ public class Message {
     // Lets us choose which file the stored messages are saved in (the tests use their own file)
     public void setStorageFile(String fileName) {
         storageFile = fileName;
+    }
+
+    // Reads a whole number from the user. If they type something that is not a number,
+    // it tells them and asks again instead of crashing
+    public static int readNumber(Scanner input) {
+        while (true) {
+            String line = input.nextLine().trim();
+            try {
+                return Integer.parseInt(line);
+            } catch (NumberFormatException e) {
+                System.out.print("That is not a number. Please enter a number: ");
+            }
+        }
     }
 
     // Asks the user for each message and lets them send, disregard or store it
@@ -118,8 +133,7 @@ public class Message {
                 System.out.println("2) Disregard Message");
                 System.out.println("3) Store Message to send later");
                 System.out.print("Enter your choice: ");
-                choice = input.nextInt();
-                input.nextLine();
+                choice = readNumber(input);
 
                 if (choice < 1 || choice > 3) {
                     System.out.println(SentMessage(choice));
@@ -138,8 +152,7 @@ public class Message {
 
             } else if (choice == 2) {
                 // Disregard: the message goes into the disregarded array
-                int deleteChoice = input.nextInt();
-                input.nextLine();
+                int deleteChoice = readNumber(input);
                 if (deleteChoice == 0) {
                     System.out.println("Message deleted.");
                 } else {
@@ -494,8 +507,7 @@ public class Message {
             System.out.println("6) Display a report of all stored messages");
             System.out.println("7) Back to the main menu");
             System.out.print("Enter your choice: ");
-            option = input.nextInt();
-            input.nextLine();
+            option = readNumber(input);
 
             if (option == 1) {
                 System.out.println(displaySendersAndRecipients());
